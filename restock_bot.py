@@ -41,21 +41,41 @@ def now_kst():
     return datetime.now(KST)
 
 
+LAST_RESPONSE = {}
+
+
 def fetch(url):
     req = urllib.request.Request(url, headers={
         "User-Agent": BROWSER_UA,
-        "Accept-Language": "ko-KR,ko;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip",
         "Cache-Control": "no-cache",
+        "Upgrade-Insecure-Requests": "1",
     })
     with urllib.request.urlopen(req, timeout=30) as response:
-        return response.read().decode("utf-8", "replace")
+        raw = response.read()
+        LAST_RESPONSE.clear()
+        LAST_RESPONSE.update({
+            "status": response.status,
+            "final_url": response.geturl(),
+            "server": response.headers.get("Server", ""),
+            "encoding": response.headers.get("Content-Encoding", ""),
+            "bytes": len(raw),
+        })
+        if response.headers.get("Content-Encoding") == "gzip":
+            import gzip
+            raw = gzip.decompress(raw)
+        return raw.decode("utf-8", "replace")
 
 
 def describe_page(html):
     """판단이 안 될 때 원인을 보려고 페이지 요약을 만든다."""
     title = re.search(r"<title>(.*?)</title>", html, re.S)
     title = re.sub(r"\s+", " ", title.group(1)).strip()[:80] if title else "(제목 없음)"
-    return f"길이 {len(html)}자, 제목: {title}"
+    r = LAST_RESPONSE
+    return (f"길이 {len(html)}자, 제목: {title}, 응답 {r.get('status')} "
+            f"server={r.get('server')} 최종주소={r.get('final_url')}")
 
 
 def detect_stock(html):
