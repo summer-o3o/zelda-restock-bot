@@ -51,6 +51,13 @@ def fetch(url):
         return response.read().decode("utf-8", "replace")
 
 
+def describe_page(html):
+    """판단이 안 될 때 원인을 보려고 페이지 요약을 만든다."""
+    title = re.search(r"<title>(.*?)</title>", html, re.S)
+    title = re.sub(r"\s+", " ", title.group(1)).strip()[:80] if title else "(제목 없음)"
+    return f"길이 {len(html)}자, 제목: {title}"
+
+
 def detect_stock(html):
     """
     닌텐도 스토어(Magento) 상품 페이지에서 재고 상태를 읽는다.
@@ -172,8 +179,9 @@ def main():
         sys.exit("DISCORD_BOT_TOKEN + DISCORD_CHANNEL_IDS(또는 DISCORD_USER_IDS)를 설정해 주세요.")
 
     if TEST_PRODUCT_URL:
-        status = detect_stock(fetch(TEST_PRODUCT_URL))
-        print(f"[테스트] {TEST_PRODUCT_URL} 재고 상태: {status}")
+        html = fetch(TEST_PRODUCT_URL)
+        status = detect_stock(html)
+        print(f"[테스트] {TEST_PRODUCT_URL} 재고 상태: {status} ({describe_page(html)})")
         if status == "in":
             sent = notify(
                 "🧪 [테스트] 재입고 알림",
@@ -192,7 +200,10 @@ def main():
         stamp = now_kst().strftime("%Y-%m-%d %H:%M:%S")
 
         try:
-            status = detect_stock(fetch(PRODUCT_URL))
+            html = fetch(PRODUCT_URL)
+            status = detect_stock(html)
+            if status == "unknown":
+                print(f"[{stamp}] 재고 표시를 못 찾음: {describe_page(html)}")
         except Exception as exc:
             status = "error"
             print(f"[{stamp}] 페이지를 가져오지 못했어요: {exc}")
