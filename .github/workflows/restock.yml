@@ -1,0 +1,62 @@
+name: 재입고 확인
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # 예비용 (주 실행은 cron-job.org)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: restock
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 기록 불러오기
+        run: |
+          git fetch origin +refs/heads/data:refs/remotes/origin/data || true
+          for f in state.json log.md; do
+            if git show "origin/data:$f" > "/tmp/$f" 2>/dev/null; then
+              cp "/tmp/$f" "$f"
+            fi
+          done
+      - name: 재고 확인 및 알림
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_IDS: ${{ secrets.DISCORD_CHANNEL_IDS }}
+          DISCORD_USER_IDS: ${{ secrets.DISCORD_USER_IDS }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RESTOCK_MENTION: ${{ secrets.RESTOCK_MENTION }}
+        run: python restock_bot.py
+      - name: 기록 저장 (data 브랜치)
+        if: always()
+        run: |
+          [ -f state.json ] || exit 0
+          mkdir -p /tmp/state
+          cp state.json /tmp/state/
+          [ -f log.md ] && cp log.md /tmp/state/
+          git config user.name "restock-bot"
+          git config user.email "restock-bot@users.noreply.github.com"
+          if git rev-parse -q --verify origin/data >/dev/null; then
+            git checkout -q -f -B data origin/data
+          else
+            git checkout -q -f --orphan data
+            git rm -rf -q --cached .
+          fi
+          cp /tmp/state/* .
+          git add state.json
+          [ -f log.md ] && git add log.md
+          git diff --cached --quiet && exit 0
+          git commit -q -m "update state"
+          git push -q origin data
