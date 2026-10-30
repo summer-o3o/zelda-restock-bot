@@ -61,8 +61,8 @@ jobs:
             git rm -rf -q --cached .
           fi
           cp /tmp/state/* .
-          git add state.json
-          [ -f log.md ] && git add log.md
+          git add -f state.json
+          [ -f log.md ] && git add -f log.md
           git diff --cached --quiet && exit 0
           git commit -q -m "update state"
           git push -q origin data
