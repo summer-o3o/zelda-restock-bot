@@ -20,7 +20,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,6 +28,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: 브라우저 캐시
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-v1
+      - name: 브라우저 설치
+        run: |
+          pip install -q playwright
+          python -m playwright install --with-deps chromium
       - name: 기록 불러오기
         run: |
           git fetch origin +refs/heads/data:refs/remotes/origin/data || true

@@ -42,16 +42,16 @@ def now_kst():
 
 
 LAST_RESPONSE = {}
+_BROWSER = {}
 
 
-def fetch(url):
+def fetch_simple(url):
+    """일반 요청 (브라우저를 못 쓸 때 예비용)."""
     req = urllib.request.Request(url, headers={
         "User-Agent": BROWSER_UA,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept-Encoding": "gzip",
         "Cache-Control": "no-cache",
-        "Upgrade-Insecure-Requests": "1",
     })
     with urllib.request.urlopen(req, timeout=30) as response:
         raw = response.read()
@@ -60,13 +60,69 @@ def fetch(url):
             "status": response.status,
             "final_url": response.geturl(),
             "server": response.headers.get("Server", ""),
-            "encoding": response.headers.get("Content-Encoding", ""),
-            "bytes": len(raw),
         })
-        if response.headers.get("Content-Encoding") == "gzip":
-            import gzip
-            raw = gzip.decompress(raw)
         return raw.decode("utf-8", "replace")
+
+
+def browser_page():
+    """크롬을 한 번만 띄워서 실행 동안 계속 쓴다 (보안 확인 쿠키 유지)."""
+    if "page" not in _BROWSER:
+        from playwright.sync_api import sync_playwright
+        pw = sync_playwright().start()
+        browser = pw.chromium.launch(args=["--disable-blink-features=AutomationControlled"])
+        context = browser.new_context(
+            user_agent=BROWSER_UA,
+            locale="ko-KR",
+            timezone_id="Asia/Seoul",
+            viewport={"width": 1280, "height": 900},
+        )
+        # 이미지·폰트·영상은 안 받아서 사이트 부담과 실행 시간을 줄임
+        context.route(
+            "**/*",
+            lambda route: route.abort()
+            if route.request.resource_type in ("image", "media", "font")
+            else route.continue_(),
+        )
+        _BROWSER.update(pw=pw, browser=browser, page=context.new_page())
+    return _BROWSER["page"]
+
+
+def close_browser():
+    if "browser" in _BROWSER:
+        try:
+            _BROWSER["browser"].close()
+            _BROWSER["pw"].stop()
+        except Exception:
+            pass
+        _BROWSER.clear()
+
+
+def fetch(url):
+    """
+    실제 크롬으로 페이지를 연다.
+    닌텐도 스토어는 해외 서버 접속에 자바스크립트 확인 화면(AWS WAF)을 보여줘서,
+    브라우저가 확인을 통과하고 상품 페이지가 뜰 때까지 기다린다.
+    """
+    try:
+        page = browser_page()
+    except Exception as exc:
+        print(f"브라우저를 띄우지 못해 일반 요청으로 확인해요: {exc}")
+        return fetch_simple(url)
+
+    response = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    try:
+        # 확인 화면이면 자동으로 새로고침되며 상품 페이지가 뜬다
+        page.wait_for_selector(".product-info-stock-sku .stock", timeout=30000)
+    except Exception:
+        pass
+
+    LAST_RESPONSE.clear()
+    LAST_RESPONSE.update({
+        "status": response.status if response else None,
+        "final_url": page.url,
+        "server": response.headers.get("server", "") if response else "",
+    })
+    return page.content()
 
 
 def describe_page(html):
@@ -211,6 +267,7 @@ def main():
             print(f"테스트 알림 전송: {sent}곳")
         else:
             print("테스트 상품이 구매 가능 상태가 아니라 알림을 보내지 않았어요.")
+        close_browser()
         return
 
     state = load_state()
@@ -260,6 +317,7 @@ def main():
         if attempt < CHECKS_PER_RUN - 1:
             time.sleep(CHECK_INTERVAL_SECONDS)
 
+    close_browser()
     write_log(list(reversed(log)))
 
 
