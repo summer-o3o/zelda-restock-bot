@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/5 * * * *"   # 예비용 (주 실행은 cron-job.org)
   workflow_dispatch:
+    inputs:
+      test_url:
+        description: "테스트용 상품 주소 (비워두면 평소처럼 실행)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -38,9 +43,10 @@ jobs:
           DISCORD_USER_IDS: ${{ secrets.DISCORD_USER_IDS }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RESTOCK_MENTION: ${{ secrets.RESTOCK_MENTION }}
+          TEST_PRODUCT_URL: ${{ github.event.inputs.test_url }}
         run: python restock_bot.py
       - name: 기록 저장 (data 브랜치)
-        if: always()
+        if: always() && github.event.inputs.test_url == ''
         run: |
           [ -f state.json ] || exit 0
           mkdir -p /tmp/state

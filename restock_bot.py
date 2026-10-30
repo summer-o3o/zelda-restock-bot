@@ -25,6 +25,8 @@ BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
 CHANNEL_IDS = [c.strip() for c in os.environ.get("DISCORD_CHANNEL_IDS", "").split(",") if c.strip()]
 USER_IDS = [u.strip() for u in os.environ.get("DISCORD_USER_IDS", "").split(",") if u.strip()]
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+# 테스트용: 이 값이 있으면 이 주소를 한 번만 확인하고, 구매 가능이면 무조건 알림 (상태 저장 안 함)
+TEST_PRODUCT_URL = os.environ.get("TEST_PRODUCT_URL", "").strip()
 # 알림과 같이 보낼 멘션 (예: "@everyone" 또는 "<@&역할ID>"), 비워두면 멘션 없음
 MENTION = os.environ.get("RESTOCK_MENTION", "").strip()
 
@@ -168,6 +170,20 @@ def notify(title, description, color):
 def main():
     if not (WEBHOOK_URL or (BOT_TOKEN and (CHANNEL_IDS or USER_IDS))):
         sys.exit("DISCORD_BOT_TOKEN + DISCORD_CHANNEL_IDS(또는 DISCORD_USER_IDS)를 설정해 주세요.")
+
+    if TEST_PRODUCT_URL:
+        status = detect_stock(fetch(TEST_PRODUCT_URL))
+        print(f"[테스트] {TEST_PRODUCT_URL} 재고 상태: {status}")
+        if status == "in":
+            sent = notify(
+                "🧪 [테스트] 재입고 알림",
+                f"테스트 상품이 구매 가능해서 보낸 알림이에요.\n{TEST_PRODUCT_URL}",
+                0x2ECC71,
+            )
+            print(f"테스트 알림 전송: {sent}곳")
+        else:
+            print("테스트 상품이 구매 가능 상태가 아니라 알림을 보내지 않았어요.")
+        return
 
     state = load_state()
     log = []
