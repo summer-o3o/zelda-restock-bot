@@ -1,8 +1,8 @@
 name: 재입고 확인
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"   # 예비용 (주 실행은 cron-job.org)
+  # 실행은 cron-job.org가 5분마다 workflow_dispatch로 시작함
+  # (GitHub 자체 예약까지 켜면 실행이 겹쳐서 대기 중인 실행이 취소됨)
   workflow_dispatch:
     inputs:
       test_url:
